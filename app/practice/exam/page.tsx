@@ -1,95 +1,129 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ShellLayout } from '@/components/shell-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
-import { ChevronLeft, ChevronRight, Timer, Flag } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Timer, Flag, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const questions = [
-  {
-    question: 'What does the Central Limit Theorem state about the distribution of sample means as sample size increases?',
-    options: [
-      'It approaches a normal distribution regardless of the population distribution',
-      'It follows a Poisson distribution for large samples',
-      'It depends only on the variance of the original distribution',
-      'It is always right-skewed for small samples',
-    ],
-    correct: 0,
-  },
-  {
-    question: 'In Embedded Systems, what is a "race condition"?',
-    options: [
-      'A condition where the CPU runs faster than expected',
-      'A situation where the output depends on the timing of events in an uncontrolled way',
-      'A hardware fault caused by overclocking',
-      'A software pattern for optimizing parallel tasks',
-    ],
-    correct: 1,
-  },
-  {
-    question: 'What does GDP stand for in Macroeconomics?',
-    options: [
-      'Gross Domestic Product',
-      'General Demand Projection',
-      'Government Deficit Plan',
-      'Gross Depreciation Percentage',
-    ],
-    correct: 0,
-  },
-  {
-    question: 'Which probability distribution is characterized by a fixed number of trials and two outcomes?',
-    options: [
-      'Normal distribution',
-      'Poisson distribution',
-      'Binomial distribution',
-      'Exponential distribution',
-    ],
-    correct: 2,
-  },
-  {
-    question: 'What is an interrupt in the context of embedded systems?',
-    options: [
-      'A delay in CPU processing',
-      'A signal that temporarily halts the CPU to handle an event',
-      'A type of memory overflow error',
-      'A method for increasing clock speed',
-    ],
-    correct: 1,
-  },
-]
+interface Question {
+  id: string
+  question_text: string
+  options: Record<string, string>
+  difficulty: string
+  topic: string
+}
 
-export default function ExamPage() {
+interface Exam {
+  id: string
+  title: string
+  subject: string
+  question_count: number
+}
+
+function ExamContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const examId = searchParams.get('id')
+
+  const [exam, setExam] = useState<Exam | null>(null)
+  const [questions, setQuestions] = useState<Question[]>([])
   const [current, setCurrent] = useState(0)
-  const [selected, setSelected] = useState<Record<number, number>>({})
-  const [seconds, setSeconds] = useState(25 * 60)
+  const [selected, setSelected] = useState<Record<string, string>>({})
+  const [seconds, setSeconds] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!examId) return
+
+    fetch(`/api/exams/${examId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.exam && data.questions) {
+          setExam(data.exam)
+          setQuestions(data.questions)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [examId])
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setSeconds((s) => (s > 0 ? s - 1 : 0))
+      setSeconds((s) => s + 1)
     }, 1000)
     return () => clearInterval(interval)
   }, [])
 
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
-  const isLow = seconds < 5 * 60
 
+  const handleSubmit = async () => {
+    if (!examId) return
+    setSubmitting(true)
+
+    const answers = Object.entries(selected).map(([question_id, user_answer]) => ({
+      question_id,
+      user_answer,
+    }))
+
+    try {
+      const res = await fetch(`/api/exams/${examId}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answers,
+          total_time_seconds: seconds,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        router.push(`/practice/results?id=${examId}`)
+      }
+    } catch (error) {
+      console.error('Submit error:', error)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <ShellLayout title="Practice Exam" description="Loading...">
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        </div>
+      </ShellLayout>
+    )
+  }
+
+  if (!exam || questions.length === 0) {
+    return (
+      <ShellLayout title="Practice Exam" description="Error">
+        <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+          <p className="text-muted-foreground">Exam not found or has no questions.</p>
+          <Button onClick={() => router.push('/practice')}>Back to Practice</Button>
+        </div>
+      </ShellLayout>
+    )
+  }
+
+  const q = questions[current]
   const answered = Object.keys(selected).length
   const progress = ((current + 1) / questions.length) * 100
 
-  const q = questions[current]
-
   return (
     <ShellLayout
-      title="Practice Exam"
-      description="Statistics · 5 questions"
+      title={exam.title}
+      description={`${exam.subject} · ${questions.length} questions`}
       actions={
-        <div className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border', isLow ? 'bg-study-rose-light text-study-rose border-study-rose/30' : 'bg-muted text-foreground border-border')}>
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border bg-muted text-foreground border-border">
           <Timer className="size-4" />
           {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
         </div>
@@ -112,7 +146,7 @@ export default function ExamPage() {
                   'flex-1 h-1.5 rounded-full transition-colors',
                   i === current
                     ? 'bg-primary'
-                    : selected[i] !== undefined
+                    : selected[questions[i].id] !== undefined
                     ? 'bg-primary/40'
                     : 'bg-muted',
                 )}
@@ -128,18 +162,24 @@ export default function ExamPage() {
               <Badge variant="secondary" className="shrink-0 mt-0.5">
                 Q{current + 1}
               </Badge>
-              <p className="text-base font-semibold text-foreground leading-relaxed text-balance">
-                {q.question}
-              </p>
+              <div>
+                <p className="text-base font-semibold text-foreground leading-relaxed">
+                  {q.question_text}
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <Badge variant="outline" className="text-xs">{q.topic}</Badge>
+                  <Badge variant="outline" className="text-xs">{q.difficulty}</Badge>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {q.options.map((opt, i) => {
-                const isSelected = selected[current] === i
+              {Object.entries(q.options).map(([letter, text]) => {
+                const isSelected = selected[q.id] === letter
                 return (
                   <button
-                    key={i}
-                    onClick={() => setSelected((prev) => ({ ...prev, [current]: i }))}
+                    key={letter}
+                    onClick={() => setSelected((prev) => ({ ...prev, [q.id]: letter }))}
                     className={cn(
                       'flex items-center gap-3 px-4 py-3.5 rounded-xl border text-left transition-all',
                       isSelected
@@ -155,10 +195,10 @@ export default function ExamPage() {
                           : 'border-border text-muted-foreground',
                       )}
                     >
-                      {String.fromCharCode(65 + i)}
+                      {letter}
                     </span>
                     <span className={cn('text-sm leading-relaxed', isSelected ? 'text-foreground font-medium' : 'text-foreground')}>
-                      {opt}
+                      {text}
                     </span>
                   </button>
                 )
@@ -174,31 +214,49 @@ export default function ExamPage() {
             onClick={() => setCurrent((c) => Math.max(0, c - 1))}
             disabled={current === 0}
           >
-            <ChevronLeft data-icon="inline-start" />
+            <ChevronLeft className="size-4 mr-1" />
             Previous
           </Button>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="text-muted-foreground gap-1.5">
-              <Flag className="size-3.5" />
-              Flag
-            </Button>
-
             {current < questions.length - 1 ? (
               <Button onClick={() => setCurrent((c) => c + 1)}>
                 Next
-                <ChevronRight data-icon="inline-end" />
+                <ChevronRight className="size-4 ml-1" />
               </Button>
             ) : (
-              <Link href="/practice/results">
-                <Button className="bg-study-teal text-primary-foreground hover:bg-study-teal/90">
-                  Submit exam
-                </Button>
-              </Link>
+              <Button
+                className="bg-study-teal text-primary-foreground hover:bg-study-teal/90"
+                onClick={handleSubmit}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="size-4 mr-1 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit exam'
+                )}
+              </Button>
             )}
           </div>
         </div>
       </div>
     </ShellLayout>
+  )
+}
+
+export default function ExamPage() {
+  return (
+    <Suspense fallback={
+      <ShellLayout title="Practice Exam" description="Loading...">
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        </div>
+      </ShellLayout>
+    }>
+      <ExamContent />
+    </Suspense>
   )
 }

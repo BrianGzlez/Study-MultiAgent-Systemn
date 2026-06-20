@@ -18,46 +18,53 @@ import {
   ArrowRight,
   GraduationCap,
   User,
+  Loader2,
+  Play,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Message = {
-  role: 'professor' | 'student'
-  text: string
-  feedback?: {
-    good: string
-    missing: string
-    better: string
-    followUp: string
-  }
+interface Feedback {
+  good: string
+  missing: string
+  better: string
+  followUp: string
 }
 
-const initialMessages: Message[] = [
-  {
-    role: 'professor',
-    text: "Good morning! I'm Professor AI, and today we'll be covering Statistics. Let's start with something fundamental: Can you explain to me what the Central Limit Theorem is and why it's important in statistics?",
-  },
-  {
-    role: 'student',
-    text: "The Central Limit Theorem says that if you take enough samples from a population, the average of those samples will follow a normal distribution, no matter how the original population is distributed. It's important because it lets us use normal distribution formulas even when the underlying data isn't normally distributed.",
-  },
-  {
-    role: 'professor',
-    text: 'Good answer! You touched on the core idea. Now let me push a bit further — what sample size is generally considered "large enough" for the CLT to apply, and are there any exceptions?',
-    feedback: {
-      good: 'You correctly identified the key idea: the distribution of sample means approaches normal regardless of the population shape.',
-      missing: 'You did not mention the typical threshold (n ≥ 30), nor did you address exceptions for heavy-tailed or highly skewed distributions.',
-      better: 'For a complete answer, mention n ≥ 30 as the common rule of thumb, note that skewed or heavy-tailed distributions may require larger samples, and explain why this theorem enables inference on non-normal populations.',
-      followUp: 'What happens when the original population is very skewed — does the CLT still hold with n = 30?',
-    },
-  },
-]
+interface Message {
+  role: 'professor' | 'student'
+  text: string
+  feedback?: Feedback | null
+}
+
+interface Document {
+  id: string
+  filename: string
+  subject: string
+  status: string
+}
 
 export default function OralPage() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
-  const [activeFeedback, setActiveFeedback] = useState<number | null>(2)
+  const [activeFeedback, setActiveFeedback] = useState<number | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [documents, setDocuments] = useState<Document[]>([])
+  const [selectedDoc, setSelectedDoc] = useState<string>('')
+  const [subject, setSubject] = useState('Statistics')
+  const [difficulty, setDifficulty] = useState('normal')
+  const [started, setStarted] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetch('/api/documents')
+      .then((res) => res.json())
+      .then((data) => {
+        const readyDocs = (data.documents || []).filter((d: Document) => d.status === 'ready')
+        setDocuments(readyDocs)
+      })
+      .catch(console.error)
+  }, [])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -65,25 +72,175 @@ export default function OralPage() {
     }
   }, [messages])
 
-  const handleSend = () => {
-    if (!input.trim()) return
-    const studentMsg: Message = { role: 'student', text: input }
-    const profReply: Message = {
-      role: 'professor',
-      text: "That's a thoughtful answer. You're right that heavily skewed distributions require a larger sample size. Let's move on — can you describe how you would set up a hypothesis test for comparing two population means?",
-      feedback: {
-        good: 'You correctly addressed the exception for skewed distributions.',
-        missing: 'You could mention the concept of kurtosis and its effect on convergence speed.',
-        better: 'Include the role of kurtosis: heavy-tailed (high kurtosis) distributions converge more slowly to normality.',
-        followUp: 'How does the choice of significance level α affect the risk of Type I errors?',
-      },
+  const startSession = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/oral', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject,
+          document_id: selectedDoc || undefined,
+          difficulty,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.session_id) {
+        setSessionId(data.session_id)
+        setMessages([{ role: 'professor', text: data.message, feedback: null }])
+        setStarted(true)
+      }
+    } catch (error) {
+      console.error('Failed to start session:', error)
+    } finally {
+      setLoading(false)
     }
-    setMessages((prev) => [...prev, studentMsg, profReply])
-    setActiveFeedback(messages.length + 1)
+  }
+
+  const handleSend = async () => {
+    if (!input.trim() || !sessionId || loading) return
+
+    const userMessage = input.trim()
     setInput('')
+    setMessages((prev) => [...prev, { role: 'student', text: userMessage }])
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/oral', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_message: userMessage,
+        }),
+      })
+
+      const data = await res.json()
+      if (data.message) {
+        const newMsg: Message = {
+          role: 'professor',
+          text: data.message,
+          feedback: data.feedback || null,
+        }
+        setMessages((prev) => [...prev, newMsg])
+        if (data.feedback) {
+          setActiveFeedback(messages.length + 1) // Index of the new professor message
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error)
+      setMessages((prev) => [
+        ...prev,
+        { role: 'professor', text: 'Sorry, I had a technical issue. Please try again.' },
+      ])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const activeFeedbackData = activeFeedback !== null ? messages[activeFeedback]?.feedback : null
+
+  // Session setup screen
+  if (!started) {
+    return (
+      <ShellLayout title="Oral Simulation" description="Chat with your AI professor">
+        <div className="p-6 max-w-2xl mx-auto flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Configure your oral session</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">Subject</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Statistics', 'Embedded Systems', 'Economics', 'Mathematics'].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setSubject(s)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+                        subject === s
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border text-muted-foreground hover:border-primary/50',
+                      )}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {documents.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-2">
+                    Source document (optional)
+                  </label>
+                  <select
+                    value={selectedDoc}
+                    onChange={(e) => setSelectedDoc(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-card"
+                  >
+                    <option value="">General knowledge</option>
+                    {documents.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        {doc.filename} ({doc.subject})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">Professor style</label>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { id: 'chill', label: 'Chill', desc: 'Supportive and encouraging' },
+                    { id: 'normal', label: 'Normal', desc: 'Balanced and helpful' },
+                    { id: 'strict', label: 'Strict Professor', desc: 'Demanding, no hints' },
+                  ].map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setDifficulty(d.id)}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all',
+                        difficulty === d.id
+                          ? 'border-primary bg-study-amber-light/60'
+                          : 'border-border bg-card hover:border-primary/40',
+                      )}
+                    >
+                      <div className={cn(
+                        'w-2.5 h-2.5 rounded-full border-2',
+                        difficulty === d.id ? 'border-primary bg-primary' : 'border-muted-foreground'
+                      )} />
+                      <div>
+                        <p className="text-sm font-medium">{d.label}</p>
+                        <p className="text-xs text-muted-foreground">{d.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Button onClick={startSession} disabled={loading} className="w-full" size="lg">
+                {loading ? (
+                  <>
+                    <Loader2 className="size-4 mr-2 animate-spin" />
+                    Starting session...
+                  </>
+                ) : (
+                  <>
+                    <Play className="size-4 mr-2" />
+                    Start oral exam
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </ShellLayout>
+    )
+  }
 
   return (
     <ShellLayout
@@ -92,7 +249,7 @@ export default function OralPage() {
       actions={
         <Badge variant="secondary" className="gap-1.5">
           <div className="size-1.5 rounded-full bg-green-500" />
-          Statistics session
+          {subject} session
         </Badge>
       }
     >
@@ -104,42 +261,26 @@ export default function OralPage() {
               <div className="flex flex-col gap-4 p-4">
                 {messages.map((msg, i) => (
                   <div key={i} className="flex flex-col gap-1">
-                    <div
-                      className={cn(
-                        'flex items-start gap-3',
-                        msg.role === 'student' && 'flex-row-reverse',
-                      )}
-                    >
-                      {/* Avatar */}
-                      <div
-                        className={cn(
-                          'size-8 rounded-full flex items-center justify-center shrink-0',
-                          msg.role === 'professor'
-                            ? 'bg-study-blue-light'
-                            : 'bg-study-amber-light',
-                        )}
-                      >
+                    <div className={cn('flex items-start gap-3', msg.role === 'student' && 'flex-row-reverse')}>
+                      <div className={cn(
+                        'size-8 rounded-full flex items-center justify-center shrink-0',
+                        msg.role === 'professor' ? 'bg-study-blue-light' : 'bg-study-amber-light',
+                      )}>
                         {msg.role === 'professor' ? (
                           <GraduationCap className="size-4 text-study-blue" />
                         ) : (
                           <User className="size-4 text-study-amber" />
                         )}
                       </div>
-
-                      {/* Bubble */}
-                      <div
-                        className={cn(
-                          'max-w-[80%] rounded-2xl px-4 py-3',
-                          msg.role === 'professor'
-                            ? 'bg-muted text-foreground rounded-tl-sm'
-                            : 'bg-primary text-primary-foreground rounded-tr-sm',
-                        )}
-                      >
+                      <div className={cn(
+                        'max-w-[80%] rounded-2xl px-4 py-3',
+                        msg.role === 'professor'
+                          ? 'bg-muted text-foreground rounded-tl-sm'
+                          : 'bg-primary text-primary-foreground rounded-tr-sm',
+                      )}>
                         <p className="text-sm leading-relaxed">{msg.text}</p>
                       </div>
                     </div>
-
-                    {/* Feedback toggle */}
                     {msg.feedback && (
                       <div className="ml-11">
                         <button
@@ -147,13 +288,23 @@ export default function OralPage() {
                           className="flex items-center gap-1 text-xs text-study-teal hover:underline"
                         >
                           <Lightbulb className="size-3" />
-                          {activeFeedback === i ? 'Hide feedback' : 'View feedback on your last answer'}
+                          {activeFeedback === i ? 'Hide feedback' : 'View feedback'}
                           <ChevronRight className={cn('size-3 transition-transform', activeFeedback === i && 'rotate-90')} />
                         </button>
                       </div>
                     )}
                   </div>
                 ))}
+                {loading && (
+                  <div className="flex items-start gap-3">
+                    <div className="size-8 rounded-full flex items-center justify-center bg-study-blue-light">
+                      <GraduationCap className="size-4 text-study-blue" />
+                    </div>
+                    <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3">
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    </div>
+                  </div>
+                )}
               </div>
             </ScrollArea>
 
@@ -170,15 +321,12 @@ export default function OralPage() {
                 }}
                 placeholder="Type your answer... (Enter to send, Shift+Enter for new line)"
                 className="resize-none min-h-[80px] bg-card"
+                disabled={loading}
               />
-              <div className="flex items-center justify-between">
-                <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-                  <Mic2 className="size-4" />
-                  Record voice
-                </Button>
-                <Button onClick={handleSend} disabled={!input.trim()} size="sm">
+              <div className="flex items-center justify-end">
+                <Button onClick={handleSend} disabled={!input.trim() || loading} size="sm">
                   Send answer
-                  <Send data-icon="inline-end" />
+                  <Send className="size-4 ml-1" />
                 </Button>
               </div>
             </div>
@@ -241,7 +389,7 @@ export default function OralPage() {
                 <CardContent className="p-6 flex flex-col items-center gap-2 text-center text-muted-foreground">
                   <Lightbulb className="size-6 text-study-amber/60" />
                   <p className="text-sm">
-                    Click &quot;View feedback&quot; on a professor message to see detailed feedback on your answer.
+                    Click &quot;View feedback&quot; on a professor message to see detailed feedback.
                   </p>
                 </CardContent>
               </Card>
@@ -254,19 +402,23 @@ export default function OralPage() {
                 <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
                   <div className="flex justify-between">
                     <span>Subject</span>
-                    <span className="text-foreground font-medium">Statistics</span>
+                    <span className="text-foreground font-medium">{subject}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Difficulty</span>
-                    <span className="text-foreground font-medium">Normal</span>
+                    <span className="text-foreground font-medium capitalize">{difficulty}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Questions asked</span>
-                    <span className="text-foreground font-medium">{messages.filter((m) => m.role === 'professor').length}</span>
+                    <span className="text-foreground font-medium">
+                      {messages.filter((m) => m.role === 'professor').length}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Your answers</span>
-                    <span className="text-foreground font-medium">{messages.filter((m) => m.role === 'student').length}</span>
+                    <span className="text-foreground font-medium">
+                      {messages.filter((m) => m.role === 'student').length}
+                    </span>
                   </div>
                 </div>
               </CardContent>
