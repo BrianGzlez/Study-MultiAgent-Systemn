@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { apiFetch } from '@/lib/api'
 import { ShellLayout } from '@/components/shell-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -41,7 +42,7 @@ function ExamContent() {
   useEffect(() => {
     if (!examId) return
 
-    fetch(`/api/exams/${examId}`)
+    apiFetch(`/api/exams/${examId}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.exam && data.questions) {
@@ -73,7 +74,7 @@ function ExamContent() {
     }))
 
     try {
-      const res = await fetch(`/api/exams/${examId}/submit`, {
+      const res = await apiFetch(`/api/exams/${examId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

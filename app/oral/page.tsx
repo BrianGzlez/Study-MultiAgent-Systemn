@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { apiFetch } from '@/lib/api'
 import { ShellLayout } from '@/components/shell-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -57,7 +58,7 @@ export default function OralPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetch('/api/documents')
+    apiFetch('/api/documents')
       .then((res) => res.json())
       .then((data) => {
         const readyDocs = (data.documents || []).filter((d: Document) => d.status === 'ready')
@@ -75,7 +76,7 @@ export default function OralPage() {
   const startSession = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/oral', {
+      const res = await apiFetch('/api/oral/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -107,7 +108,7 @@ export default function OralPage() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/oral', {
+      const res = await apiFetch('/api/oral/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

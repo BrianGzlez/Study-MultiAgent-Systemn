@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { apiFetch } from '@/lib/api'
 import { ShellLayout } from '@/components/shell-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -66,7 +67,7 @@ export default function PracticePage() {
 
   useEffect(() => {
     // Fetch ready documents
-    fetch('/api/documents')
+    apiFetch('/api/documents')
       .then((res) => res.json())
       .then((data) => {
         const readyDocs = (data.documents || []).filter((d: Document) => d.status === 'ready')
@@ -76,7 +77,7 @@ export default function PracticePage() {
       .catch(console.error)
 
     // Fetch recent exams
-    fetch('/api/exams')
+    apiFetch('/api/exams')
       .then((res) => res.json())
       .then((data) => {
         setRecentExams((data.exams || []).slice(0, 5))
@@ -92,7 +93,7 @@ export default function PracticePage() {
     const doc = documents.find((d) => d.id === selectedDoc)
 
     try {
-      const res = await fetch('/api/exams/generate', {
+      const res = await apiFetch('/api/exams/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

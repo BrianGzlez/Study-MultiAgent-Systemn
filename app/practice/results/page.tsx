@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { apiFetch } from '@/lib/api'
 import { ShellLayout } from '@/components/shell-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -60,7 +61,7 @@ function ResultsContent() {
   useEffect(() => {
     if (!examId) return
 
-    fetch(`/api/exams/${examId}`)
+    apiFetch(`/api/exams/${examId}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.exam) setExam(data.exam)

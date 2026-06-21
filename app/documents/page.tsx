@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { apiFetch } from '@/lib/api'
 import { ShellLayout } from '@/components/shell-layout'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -79,7 +80,7 @@ export default function DocumentsPage() {
 
   const fetchDocuments = useCallback(async () => {
     try {
-      const res = await fetch('/api/documents')
+      const res = await apiFetch('/api/documents')
       const data = await res.json()
       if (data.documents) {
         setDocuments(data.documents)
@@ -104,7 +105,7 @@ export default function DocumentsPage() {
     formData.append('subject', uploadSubject)
 
     try {
-      const res = await fetch('/api/documents/upload', {
+      const res = await apiFetch('/api/documents/upload', {
         method: 'POST',
         body: formData,
       })

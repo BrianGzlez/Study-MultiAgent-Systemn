@@ -8,98 +8,143 @@ Personal AI-powered study dashboard for exam preparation. Upload documents, gene
 - **Practice Exam Generation** — Generate multiple-choice exams from your uploaded documents using OpenAI.
 - **Exam Mode** — Take timed exams, get scored, and review answers with explanations.
 - **Results & Weak Topics** — See your score breakdown and identify areas that need more study.
-- **Oral Simulation** — Chat with an AI professor who asks questions and gives structured feedback on your answers.
+- **Oral Simulation** — Chat with an AI professor who asks questions and gives structured feedback.
 - **Settings** — Configure language, subjects, AI strictness, and dark mode.
+
+## Architecture
+
+```
+┌─────────────────┐       ┌──────────────────┐       ┌────────────┐
+│  Next.js (UI)   │ ───── │  FastAPI Backend  │ ───── │ PostgreSQL │
+│  localhost:3000  │       │  localhost:8000   │       │   (local)  │
+└─────────────────┘       └──────────────────┘       └────────────┘
+                                  │
+                                  ▼
+                          ┌──────────────┐
+                          │  OpenAI API  │
+                          └──────────────┘
+```
 
 ## Tech Stack
 
-- **Frontend**: Next.js 16, React 19, Tailwind CSS 4, shadcn/ui
-- **Backend**: Next.js API Routes
-- **Database**: Supabase (PostgreSQL + pgvector)
-- **AI**: OpenAI (GPT-4o-mini for generation, text-embedding-3-small for embeddings)
-- **File Processing**: pdf-parse, mammoth (DOCX), jszip (PPTX)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 16, React 19, Tailwind CSS 4, shadcn/ui |
+| Backend | FastAPI (Python 3.13) |
+| Database | PostgreSQL 16 (local) |
+| AI | OpenAI GPT-4o-mini + text-embedding-3-small |
+| File Processing | PyPDF2, python-docx, python-pptx |
 
 ## Setup
 
 ### Prerequisites
 
 - Node.js 20+
-- A [Supabase](https://supabase.com) project (free tier works)
+- Python 3.11+
+- PostgreSQL 16 (via Homebrew: `brew install postgresql@16`)
 - An [OpenAI](https://platform.openai.com) API key
 
-### 1. Install dependencies
+### 1. Start PostgreSQL
 
 ```bash
+brew services start postgresql@16
+export PATH="/opt/homebrew/opt/postgresql@16/bin:$PATH"
+createdb studyroom_ai
+```
+
+### 2. Backend setup
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Edit `backend/.env` with your OpenAI key:
+```env
+DATABASE_URL=postgresql://your_user@localhost:5432/studyroom_ai
+OPENAI_API_KEY=sk-your-key
+```
+
+Start the backend:
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+### 3. Frontend setup
+
+```bash
+# From project root
 npm install
 ```
 
-### 2. Configure environment variables
-
-Copy `.env.example` to `.env.local` and fill in your keys:
-
-```bash
-cp .env.example .env.local
-```
-
+Edit `.env.local`:
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-OPENAI_API_KEY=sk-your-openai-key
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-### 3. Setup the database
-
-1. Go to your Supabase project → SQL Editor
-2. Run the contents of `supabase/schema.sql`
-3. Go to Storage → Create a new bucket called `documents` (private)
-
-### 4. Run the app
-
+Start the frontend:
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+### 4. Open the app
+
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ## Project Structure
 
 ```
-├── app/
-│   ├── api/                  # API routes (backend)
-│   │   ├── documents/        # Upload & list documents
-│   │   ├── exams/            # Generate, fetch, submit exams
-│   │   └── oral/             # Oral simulation sessions
-│   ├── documents/            # Documents page
-│   ├── oral/                 # Oral simulation page
-│   ├── practice/             # Practice exam config + taking + results
-│   └── settings/             # User settings
-├── components/               # Shared UI components
+├── app/                    # Next.js frontend pages
+│   ├── documents/          # Document upload & management
+│   ├── oral/               # Oral simulation
+│   ├── practice/           # Exam config, taking, results
+│   └── settings/           # User settings
+├── components/             # Shared UI components
 ├── lib/
-│   ├── openai.ts             # OpenAI client + embedding generation
-│   ├── document-processor.ts # PDF/DOCX/PPTX text extraction + chunking
-│   └── supabase/             # Supabase clients + types
-├── supabase/
-│   └── schema.sql            # Database schema (run in Supabase SQL Editor)
-└── .env.example              # Environment variables template
+│   ├── api.ts              # API client (points to FastAPI)
+│   └── utils.ts            # Utility functions
+├── backend/                # FastAPI backend
+│   ├── app/
+│   │   ├── main.py         # FastAPI app entry point
+│   │   ├── config.py       # Environment config
+│   │   ├── database.py     # SQLAlchemy setup
+│   │   ├── models.py       # Database models
+│   │   ├── routers/        # API route handlers
+│   │   │   ├── documents.py
+│   │   │   ├── exams.py
+│   │   │   └── oral.py
+│   │   └── services/       # Business logic
+│   │       ├── ai_service.py
+│   │       └── document_processor.py
+│   ├── requirements.txt
+│   └── .env
+└── .env.local              # Frontend env vars
 ```
 
-## API Routes
+## API Endpoints
 
 | Route | Method | Description |
 |-------|--------|-------------|
+| `/api/health` | GET | Health check |
 | `/api/documents` | GET | List all documents |
 | `/api/documents/upload` | POST | Upload & process a document |
 | `/api/exams` | GET | List all exams |
 | `/api/exams/generate` | POST | Generate exam from document |
-| `/api/exams/[id]` | GET | Get exam with questions |
-| `/api/exams/[id]/submit` | POST | Submit answers & get score |
-| `/api/oral` | POST | Start/continue oral session |
+| `/api/exams/{id}` | GET | Get exam with questions |
+| `/api/exams/{id}/submit` | POST | Submit answers & get score |
+| `/api/oral/start` | POST | Start oral session |
+| `/api/oral/respond` | POST | Send student response |
 
 ## Development
 
 ```bash
-npm run dev     # Start dev server
-npm run build   # Production build
-npm run lint    # Run linter
+# Terminal 1: Backend
+cd backend && source venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+
+# Terminal 2: Frontend
+npm run dev
 ```
