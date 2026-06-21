@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app.routers import documents, exams, oral, stats, settings
+from app.logging_config import setup_logging
+
+# Setup logging first
+setup_logging()
 
 # Create all tables
 Base.metadata.create_all(bind=engine)

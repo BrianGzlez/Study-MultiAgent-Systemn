@@ -1,6 +1,8 @@
-"""CrewAI Crew definitions — each crew orchestrates a specific workflow."""
+"""CrewAI Crew definitions — each crew orchestrates a specific workflow with full logging."""
 
 import json
+import logging
+import time
 import numpy as np
 from openai import OpenAI
 from crewai import Crew, Process
@@ -28,6 +30,7 @@ from app.agents.tasks import (
     create_study_plan_task,
 )
 
+logger = logging.getLogger("studyroom.crews")
 _openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 
@@ -43,6 +46,7 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 def _retrieve_relevant_chunks(query: str, chunks: list[dict], top_k: int = 8) -> list[dict]:
     """Vector similarity search on chunks."""
+    logger.info(f"  🔎 RAG: Searching {len(chunks)} chunks for: '{query[:50]}...'")
     query_emb = _get_embedding(query)
     scored = []
     for chunk in chunks:
@@ -50,7 +54,10 @@ def _retrieve_relevant_chunks(query: str, chunks: list[dict], top_k: int = 8) ->
             sim = _cosine_similarity(query_emb, chunk["embedding"])
             scored.append({**chunk, "similarity": sim})
     scored.sort(key=lambda x: x["similarity"], reverse=True)
-    return scored[:top_k]
+    top = scored[:top_k]
+    if top:
+        logger.info(f"  🔎 RAG: Found {len(top)} relevant chunks (top similarity: {top[0]['similarity']:.3f})")
+    return top
 
 
 def _safe_parse(raw_output) -> dict | list:
@@ -72,6 +79,11 @@ def _safe_parse(raw_output) -> dict | list:
 
 def run_document_analysis(text: str) -> dict:
     """Crew: Document Analyst analyzes study material."""
+    logger.info("═══════════════════════════════════════════")
+    logger.info("🚀 CREW START: Document Analysis")
+    logger.info("═══════════════════════════════════════════")
+    start = time.time()
+
     agent = create_document_analyst()
     task = create_analyze_document_task(agent, text)
 
@@ -79,10 +91,12 @@ def run_document_analysis(text: str) -> dict:
         agents=[agent],
         tasks=[task],
         process=Process.sequential,
-        verbose=False,
+        verbose=True,
     )
 
     result = crew.kickoff()
+    elapsed = time.time() - start
+    logger.info(f"✅ CREW DONE: Document Analysis ({elapsed:.1f}s)")
     return _safe_parse(result.raw)
 
 
@@ -92,12 +106,20 @@ def run_exam_generation(
     chunks: list[dict], subject: str, num_questions: int, difficulty: str
 ) -> list[dict]:
     """Crew: RAG Retrieval → Exam Designer (sequential pipeline)."""
+    logger.info("═══════════════════════════════════════════")
+    logger.info(f"🚀 CREW START: Exam Generation ({num_questions}q, {difficulty}, {subject})")
+    logger.info("═══════════════════════════════════════════")
+    start = time.time()
+
     # Step 1: Vector retrieval
-    query = f"Key concepts, definitions, formulas in {subject}"
+    logger.info("  Step 1/2: RAG Retrieval Agent searching for relevant content...")
+    query = f"Key concepts, definitions, formulas, theorems, and critical examples in {subject}"
     relevant = _retrieve_relevant_chunks(query, chunks, top_k=10)
     context = "\n\n".join([c["content"] for c in relevant]) if relevant else "\n\n".join([c["content"] for c in chunks[:8]])
+    logger.info(f"  Step 1/2: Context prepared ({len(context)} chars from {len(relevant)} chunks)")
 
     # Step 2: Exam Designer agent creates questions
+    logger.info("  Step 2/2: Exam Designer Agent crafting questions...")
     designer = create_exam_designer()
     task = create_generate_exam_task(designer, context, subject, num_questions, difficulty)
 
@@ -105,26 +127,37 @@ def run_exam_generation(
         agents=[designer],
         tasks=[task],
         process=Process.sequential,
-        verbose=False,
+        verbose=True,
     )
 
     result = crew.kickoff()
     parsed = _safe_parse(result.raw)
 
     if isinstance(parsed, list):
-        return parsed
-    if isinstance(parsed, dict) and "questions" in parsed:
-        return parsed["questions"]
-    return parsed if isinstance(parsed, list) else []
+        questions = parsed
+    elif isinstance(parsed, dict) and "questions" in parsed:
+        questions = parsed["questions"]
+    else:
+        questions = []
+
+    elapsed = time.time() - start
+    logger.info(f"✅ CREW DONE: Exam Generation — {len(questions)} questions in {elapsed:.1f}s")
+    return questions
 
 
 # ─── CREW: Oral Simulation ────────────────────────────────────────────────
 
 def run_oral_start(subject: str, difficulty: str, chunks: list[dict] | None = None) -> dict:
     """Crew: Start oral exam session."""
+    logger.info("═══════════════════════════════════════════")
+    logger.info(f"🚀 CREW START: Oral Session ({subject}, {difficulty})")
+    logger.info("═══════════════════════════════════════════")
+    start = time.time()
+
     material = ""
     if chunks:
-        relevant = _retrieve_relevant_chunks(f"Important concepts in {subject}", chunks, top_k=5)
+        logger.info("  RAG: Retrieving relevant material for oral exam context...")
+        relevant = _retrieve_relevant_chunks(f"Important concepts, definitions, and examples in {subject}", chunks, top_k=6)
         material = "\n\n".join([c["content"] for c in relevant])
 
     professor = create_oral_professor(difficulty)
@@ -134,13 +167,16 @@ def run_oral_start(subject: str, difficulty: str, chunks: list[dict] | None = No
         agents=[professor],
         tasks=[task],
         process=Process.sequential,
-        verbose=False,
+        verbose=True,
     )
 
     result = crew.kickoff()
     parsed = _safe_parse(result.raw)
     if "message" not in parsed:
         parsed = {"message": str(result.raw), "feedback": None}
+
+    elapsed = time.time() - start
+    logger.info(f"✅ CREW DONE: Oral Session started in {elapsed:.1f}s")
     return parsed
 
 
@@ -149,11 +185,16 @@ def run_oral_respond(
     material: str = "", history: list[dict] | None = None
 ) -> dict:
     """Crew: Professor evaluates answer and asks follow-up."""
+    logger.info("───────────────────────────────────────────")
+    logger.info(f"🎓 Oral Professor evaluating response...")
+    logger.info(f"  Student said: '{student_answer[:80]}...'")
+    start = time.time()
+
     history_text = ""
     if history:
-        for msg in history[-6:]:  # Keep last 6 messages for context
+        for msg in history[-8:]:  # More context for better continuity
             role = "Professor" if msg["role"] == "assistant" else "Student"
-            history_text += f"{role}: {msg['content']}\n"
+            history_text += f"{role}: {msg['content'][:200]}\n"
 
     professor = create_oral_professor(difficulty)
     task = create_oral_response_task(professor, student_answer, history_text)
@@ -162,13 +203,16 @@ def run_oral_respond(
         agents=[professor],
         tasks=[task],
         process=Process.sequential,
-        verbose=False,
+        verbose=True,
     )
 
     result = crew.kickoff()
     parsed = _safe_parse(result.raw)
     if "message" not in parsed:
         parsed = {"message": str(result.raw), "feedback": None}
+
+    elapsed = time.time() - start
+    logger.info(f"✅ Oral Professor responded in {elapsed:.1f}s")
     return parsed
 
 
@@ -176,7 +220,11 @@ def run_oral_respond(
 
 def run_evaluation_and_coaching(questions: list[dict], answers: dict[str, str], score: int) -> dict:
     """Crew: Evaluation Agent → Learning Coach (sequential pipeline)."""
-    # Build exam data for evaluation
+    logger.info("═══════════════════════════════════════════")
+    logger.info(f"🚀 CREW START: Evaluation & Coaching (score={score}%)")
+    logger.info("═══════════════════════════════════════════")
+    start = time.time()
+
     incorrect = []
     for q in questions:
         user_ans = answers.get(str(q["id"]), "")
@@ -184,13 +232,16 @@ def run_evaluation_and_coaching(questions: list[dict], answers: dict[str, str], 
             incorrect.append(q)
 
     if not incorrect:
-        return {"coaching": {"encouragement": "Perfect score! Keep it up!", "priority_topics": [], "study_tips": []}}
+        logger.info("✅ Perfect score! No coaching needed.")
+        return {"coaching": {"encouragement": "Perfect score! Impressive work!", "priority_topics": [], "study_tips": []}}
+
+    logger.info(f"  {len(incorrect)} incorrect answers detected. Learning Coach analyzing...")
 
     # Learning Coach provides feedback
     coach = create_learning_coach()
     weak_topics = list(set(q.get("topic", "") for q in incorrect))
     incorrect_text = "\n".join([
-        f"- Q: {q['question_text']}\n  Student: {answers.get(str(q['id']), '?')}\n  Correct: {q['correct_answer']}\n  Topic: {q.get('topic', '')}"
+        f"- Q: {q['question_text']}\n  Student answered: {answers.get(str(q['id']), '?')} (Wrong)\n  Correct was: {q['correct_answer']} — {q.get('options', {}).get(q['correct_answer'], '')}\n  Topic: {q.get('topic', '')}\n  Explanation: {q.get('explanation', '')}"
         for q in incorrect[:8]
     ])
 
@@ -200,10 +251,12 @@ def run_evaluation_and_coaching(questions: list[dict], answers: dict[str, str], 
         agents=[coach],
         tasks=[task],
         process=Process.sequential,
-        verbose=False,
+        verbose=True,
     )
 
     result = crew.kickoff()
+    elapsed = time.time() - start
+    logger.info(f"✅ CREW DONE: Evaluation & Coaching in {elapsed:.1f}s")
     return _safe_parse(result.raw)
 
 
@@ -211,6 +264,11 @@ def run_evaluation_and_coaching(questions: list[dict], answers: dict[str, str], 
 
 def run_progress_analysis(exam_history: list[dict]) -> dict:
     """Crew: Progress Agent → Study Planner (sequential pipeline)."""
+    logger.info("═══════════════════════════════════════════")
+    logger.info(f"🚀 CREW START: Progress Analysis ({len(exam_history)} exams in history)")
+    logger.info("═══════════════════════════════════════════")
+    start = time.time()
+
     if not exam_history:
         return {
             "progress": {"overall_mastery": 0, "weakest_topics": [], "recommendation": "Take your first exam!"},
@@ -219,15 +277,17 @@ def run_progress_analysis(exam_history: list[dict]) -> dict:
 
     history_text = "\n".join([
         f"- {e['subject']}: {e['score']}% ({e['question_count']}q, {e.get('date', '?')})"
-        + (f" Weak: {', '.join(e.get('weak_topics', []))}" if e.get('weak_topics') else "")
+        + (f" | Weak: {', '.join(e.get('weak_topics', []))}" if e.get('weak_topics') else "")
         for e in exam_history
     ])
 
     # Progress Agent
+    logger.info("  Step 1/2: Progress Agent analyzing exam history...")
     progress_agent = create_progress_agent()
     progress_task = create_progress_analysis_task(progress_agent, history_text)
 
     # Study Planner
+    logger.info("  Step 2/2: Study Planner creating personalized plan...")
     planner = create_study_planner()
     subjects = list(set(e.get("subject", "") for e in exam_history))
     weak = list(set(t for e in exam_history for t in e.get("weak_topics", [])))
@@ -235,23 +295,25 @@ def run_progress_analysis(exam_history: list[dict]) -> dict:
     plan_task = create_study_plan_task(
         planner,
         ", ".join(subjects),
-        ", ".join(weak) if weak else "None identified",
-        "None identified",
+        ", ".join(weak) if weak else "None identified yet",
+        "None identified yet",
     )
 
     crew = Crew(
         agents=[progress_agent, planner],
         tasks=[progress_task, plan_task],
         process=Process.sequential,
-        verbose=False,
+        verbose=True,
     )
 
     result = crew.kickoff()
-    # The result contains outputs from both tasks
     tasks_output = result.tasks_output if hasattr(result, 'tasks_output') else []
 
     progress_result = _safe_parse(tasks_output[0].raw) if len(tasks_output) > 0 else {}
     plan_result = _safe_parse(tasks_output[1].raw) if len(tasks_output) > 1 else None
+
+    elapsed = time.time() - start
+    logger.info(f"✅ CREW DONE: Progress Analysis in {elapsed:.1f}s")
 
     return {
         "progress": progress_result,

@@ -102,26 +102,6 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarSeparator />
-
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>This week</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <div className="px-2 flex flex-col gap-1">
-              <div className="flex items-center gap-1.5">
-                <Trophy className="size-3.5 text-study-amber" />
-                <span className="text-xs text-muted-foreground">
-                  5 day streak
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <ClipboardList className="size-3.5 text-study-teal" />
-                <span className="text-xs text-muted-foreground">
-                  3 exams completed
-                </span>
-              </div>
-            </div>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>
