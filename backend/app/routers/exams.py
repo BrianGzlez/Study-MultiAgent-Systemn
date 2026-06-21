@@ -15,6 +15,7 @@ class GenerateExamRequest(BaseModel):
     subject: str
     num_questions: int = 20
     difficulty: str = "medium"
+    topics: str | None = None  # Comma-separated specific topics to focus on
 
 
 class SubmitAnswer(BaseModel):
@@ -115,11 +116,15 @@ def generate_exam(body: GenerateExamRequest, db: Session = Depends(get_db)):
     chunk_dicts = [{"content": c.content, "embedding": c.embedding} for c in chunks]
 
     # Multi-agent pipeline: RAG → Exam Designer (CrewAI)
+    # Parse specific topics if provided
+    topic_list = [t.strip() for t in body.topics.split(",")] if body.topics else None
+
     questions_data = run_exam_generation(
         chunks=chunk_dicts,
         subject=body.subject,
         num_questions=body.num_questions,
         difficulty=body.difficulty,
+        topics=topic_list,
     )
 
     if not questions_data:

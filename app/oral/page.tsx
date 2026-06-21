@@ -6,6 +6,7 @@ import { ShellLayout } from '@/components/shell-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -52,7 +53,8 @@ export default function OralPage() {
   const [loading, setLoading] = useState(false)
   const [documents, setDocuments] = useState<Document[]>([])
   const [selectedDoc, setSelectedDoc] = useState<string>('')
-  const [subject, setSubject] = useState('Statistics')
+  const [subject, setSubject] = useState('')
+  const [specificTopics, setSpecificTopics] = useState('')
   const [difficulty, setDifficulty] = useState('normal')
   const [started, setStarted] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -74,15 +76,17 @@ export default function OralPage() {
   }, [messages])
 
   const startSession = async () => {
+    if (!subject.trim()) return
     setLoading(true)
     try {
       const res = await apiFetch('/api/oral/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subject,
+          subject: subject.trim(),
           document_id: selectedDoc || undefined,
           difficulty,
+          topics: specificTopics.trim() || undefined,
         }),
       })
 
@@ -149,40 +153,46 @@ export default function OralPage() {
         <div className="p-6 max-w-2xl mx-auto flex flex-col gap-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Configure your oral session</CardTitle>
+              <CardTitle className="text-base">Configura tu sesión oral</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Subject</label>
-                <div className="flex flex-wrap gap-2">
-                  {['Statistics', 'Embedded Systems', 'Economics', 'Mathematics'].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setSubject(s)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
-                        subject === s
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'border-border text-muted-foreground hover:border-primary/50',
-                      )}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                <label className="text-sm font-medium text-foreground block mb-2">Materia</label>
+                <Input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Ej: Microeconomía, Estadística, Redes..."
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">Temas específicos (opcional)</label>
+                <Textarea
+                  value={specificTopics}
+                  onChange={(e) => setSpecificTopics(e.target.value)}
+                  placeholder="Ej: Equilibrio de Nash, Modelo de Cournot, Elasticidad..."
+                  className="min-h-[60px] resize-none"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  El profesor se enfocará en estos temas. Deja vacío para preguntas generales.
+                </p>
               </div>
 
               {documents.length > 0 && (
                 <div>
                   <label className="text-sm font-medium text-foreground block mb-2">
-                    Source document (optional)
+                    Documento fuente (opcional)
                   </label>
                   <select
                     value={selectedDoc}
-                    onChange={(e) => setSelectedDoc(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedDoc(e.target.value)
+                      const doc = documents.find(d => d.id === e.target.value)
+                      if (doc && !subject) setSubject(doc.subject)
+                    }}
                     className="w-full border rounded-lg px-3 py-2 text-sm bg-card"
                   >
-                    <option value="">General knowledge</option>
+                    <option value="">Conocimiento general</option>
                     {documents.map((doc) => (
                       <option key={doc.id} value={doc.id}>
                         {doc.filename} ({doc.subject})
@@ -193,12 +203,12 @@ export default function OralPage() {
               )}
 
               <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Professor style</label>
+                <label className="text-sm font-medium text-foreground block mb-2">Estilo del profesor</label>
                 <div className="flex flex-col gap-2">
                   {[
-                    { id: 'chill', label: 'Chill', desc: 'Supportive and encouraging' },
-                    { id: 'normal', label: 'Normal', desc: 'Balanced and helpful' },
-                    { id: 'strict', label: 'Strict Professor', desc: 'Demanding, no hints' },
+                    { id: 'chill', label: 'Relajado', desc: 'Paciente, da pistas, te anima' },
+                    { id: 'normal', label: 'Normal', desc: 'Equilibrado, directo pero justo' },
+                    { id: 'strict', label: 'Estricto', desc: 'Exigente, sin pistas, presión real' },
                   ].map((d) => (
                     <button
                       key={d.id}

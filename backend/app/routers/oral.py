@@ -14,6 +14,7 @@ class StartSessionRequest(BaseModel):
     subject: str
     document_id: str | None = None
     difficulty: str = "normal"
+    topics: str | None = None  # Specific topics to focus on
 
 
 class ContinueSessionRequest(BaseModel):
@@ -36,8 +37,12 @@ def start_session(body: StartSessionRequest, db: Session = Depends(get_db)):
         chunks = [{"content": c.content, "embedding": c.embedding} for c in chunk_records]
 
     # Multi-agent: RAG Retrieval → Oral Professor (CrewAI)
+    subject_with_topics = body.subject
+    if body.topics:
+        subject_with_topics += f" (focus on: {body.topics})"
+
     result = run_oral_start(
-        subject=body.subject,
+        subject=subject_with_topics,
         difficulty=body.difficulty,
         chunks=chunks,
     )

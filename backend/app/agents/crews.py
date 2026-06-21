@@ -103,17 +103,23 @@ def run_document_analysis(text: str) -> dict:
 # ─── CREW: Exam Generation ────────────────────────────────────────────────
 
 def run_exam_generation(
-    chunks: list[dict], subject: str, num_questions: int, difficulty: str
+    chunks: list[dict], subject: str, num_questions: int, difficulty: str,
+    topics: list[str] | None = None
 ) -> list[dict]:
     """Crew: RAG Retrieval → Exam Designer (sequential pipeline)."""
     logger.info("═══════════════════════════════════════════")
     logger.info(f"🚀 CREW START: Exam Generation ({num_questions}q, {difficulty}, {subject})")
+    if topics:
+        logger.info(f"  📌 Focus topics: {', '.join(topics)}")
     logger.info("═══════════════════════════════════════════")
     start = time.time()
 
-    # Step 1: Vector retrieval
+    # Step 1: Vector retrieval — focus on specific topics if provided
     logger.info("  Step 1/2: RAG Retrieval Agent searching for relevant content...")
-    query = f"Key concepts, definitions, formulas, theorems, and critical examples in {subject}"
+    if topics:
+        query = f"Content about: {', '.join(topics)} in {subject}"
+    else:
+        query = f"Key concepts, definitions, formulas, theorems, and critical examples in {subject}"
     relevant = _retrieve_relevant_chunks(query, chunks, top_k=10)
     context = "\n\n".join([c["content"] for c in relevant]) if relevant else "\n\n".join([c["content"] for c in chunks[:8]])
     logger.info(f"  Step 1/2: Context prepared ({len(context)} chars from {len(relevant)} chunks)")
@@ -121,7 +127,10 @@ def run_exam_generation(
     # Step 2: Exam Designer agent creates questions
     logger.info("  Step 2/2: Exam Designer Agent crafting questions...")
     designer = create_exam_designer()
-    task = create_generate_exam_task(designer, context, subject, num_questions, difficulty)
+
+    # Build task with topic focus
+    topic_instruction = f"\n\nFOCUS ON THESE SPECIFIC TOPICS ONLY: {', '.join(topics)}\nAll questions must be about these topics." if topics else ""
+    task = create_generate_exam_task(designer, context + topic_instruction, subject, num_questions, difficulty)
 
     crew = Crew(
         agents=[designer],
