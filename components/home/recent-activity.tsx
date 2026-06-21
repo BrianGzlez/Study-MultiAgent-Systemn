@@ -32,7 +32,7 @@ function timeAgo(dateStr: string | null): string {
 export function RecentActivity({ items }: { items: ActivityItem[] }) {
   if (items.length === 0) {
     return (
-      <Card className="shadow-sm border-border/50">
+      <Card className="shadow-sm border-none">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <Clock className="size-4 text-muted-foreground" />
@@ -53,7 +53,7 @@ export function RecentActivity({ items }: { items: ActivityItem[] }) {
   }
 
   return (
-    <Card className="shadow-sm border-border/50">
+    <Card className="shadow-sm border-none">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-bold flex items-center gap-2">
           <Clock className="size-4 text-muted-foreground" />

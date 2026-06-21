@@ -115,7 +115,7 @@ export default function HomePage() {
           ].map((s) => {
             const Icon = s.icon
             return (
-              <Card key={s.label} className="shadow-sm border-border/50">
+              <Card key={s.label} className="shadow-sm border-none">
                 <CardContent className="p-4 flex items-center gap-3">
                   <div className={cn('size-10 rounded-xl flex items-center justify-center shrink-0', s.iconBg)}>
                     <Icon className={cn('size-5', s.iconColor)} />
@@ -141,12 +141,9 @@ export default function HomePage() {
               const Icon = action.icon
               return (
                 <Link key={action.label} href={action.href}>
-                  <Card className={cn(
-                    'group cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
-                    action.border,
-                  )}>
-                    <CardContent className="p-5 flex flex-col gap-4">
-                      <div className={cn('size-11 rounded-xl flex items-center justify-center', action.iconBg)}>
+                  <Card className="group cursor-pointer border-none shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-1">
+                    <CardContent className="p-5 flex flex-col gap-3">
+                      <div className={cn('size-10 rounded-xl flex items-center justify-center', action.iconBg)}>
                         <Icon className={cn('size-5', action.iconColor)} />
                       </div>
                       <div>
@@ -172,7 +169,7 @@ export default function HomePage() {
             <RecentActivity items={activity} />
           </div>
           <div>
-            <Card className="border-study-blue/20 bg-study-blue-light/30">
+            <Card className="border-none shadow-sm bg-study-blue-light/40">
               <CardContent className="p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <div className="size-6 rounded-md bg-study-blue flex items-center justify-center">
