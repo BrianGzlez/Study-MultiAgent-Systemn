@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models import Document, Exam, ExamQuestion, OralSession
+from app.agents.orchestrator import AgentOrchestrator
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
+orchestrator = AgentOrchestrator()
 
 
 @router.get("/dashboard")
@@ -99,3 +101,52 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         },
         "activity": activity[:8],
     }
+
+
+@router.get("/progress")
+def get_progress(db: Session = Depends(get_db)):
+    """Get AI-powered progress analysis using Progress Agent + Study Planner."""
+    # Get exam history
+    exams = (
+        db.query(Exam)
+        .filter(Exam.status == "completed")
+        .order_by(Exam.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    if not exams:
+        return {
+            "progress": {
+                "topic_mastery": [],
+                "overall_mastery": 0,
+                "weakest_topics": [],
+                "strongest_topics": [],
+                "recommendation": "Take your first exam to start tracking progress!",
+                "next_goals": ["Complete your first practice exam"],
+            },
+            "study_plan": None,
+        }
+
+    # Build history for the agent
+    exam_history = []
+    for exam in exams:
+        # Get weak topics for each exam
+        incorrect = (
+            db.query(ExamQuestion.topic)
+            .filter(ExamQuestion.exam_id == exam.id, ExamQuestion.is_correct == False)
+            .all()
+        )
+        weak = list(set(q[0] for q in incorrect))
+
+        exam_history.append({
+            "subject": exam.subject,
+            "score": exam.score or 0,
+            "question_count": exam.question_count,
+            "date": exam.completed_at.strftime("%Y-%m-%d") if exam.completed_at else "unknown",
+            "weak_topics": weak,
+        })
+
+    # Multi-agent pipeline: Progress Agent → Study Planner
+    result = orchestrator.get_progress_analysis(exam_history)
+    return result

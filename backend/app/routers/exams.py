@@ -5,9 +5,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Document, DocumentChunk, Exam, ExamQuestion
-from app.services.ai_service import find_similar_chunks, generate_exam_questions
+from app.agents.orchestrator import AgentOrchestrator
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
+orchestrator = AgentOrchestrator()
 
 
 class GenerateExamRequest(BaseModel):
@@ -95,7 +96,7 @@ def get_exam(exam_id: str, db: Session = Depends(get_db)):
 
 @router.post("/generate")
 def generate_exam(body: GenerateExamRequest, db: Session = Depends(get_db)):
-    """Generate a practice exam from a document."""
+    """Generate exam using multi-agent pipeline: RAG Retrieval → Exam Designer."""
     # Verify document exists
     doc = db.query(Document).filter(Document.id == uuid.UUID(body.document_id)).first()
     if not doc:
@@ -112,23 +113,11 @@ def generate_exam(body: GenerateExamRequest, db: Session = Depends(get_db)):
     if not chunks:
         raise HTTPException(status_code=404, detail="No content found for this document")
 
-    # Find most relevant chunks using similarity search
     chunk_dicts = [{"content": c.content, "embedding": c.embedding} for c in chunks]
 
-    try:
-        similar = find_similar_chunks(
-            f"Key concepts and important topics in {body.subject}",
-            chunk_dicts,
-            top_k=8,
-        )
-        context = "\n\n".join([c["content"] for c in similar])
-    except Exception:
-        # Fallback: use first chunks directly
-        context = "\n\n".join([c.content for c in chunks[:8]])
-
-    # Generate questions with OpenAI
-    questions_data = generate_exam_questions(
-        context=context,
+    # Multi-agent pipeline: RAG → Exam Designer
+    questions_data = orchestrator.generate_exam(
+        chunks=chunk_dicts,
         subject=body.subject,
         num_questions=body.num_questions,
         difficulty=body.difficulty,
@@ -137,7 +126,7 @@ def generate_exam(body: GenerateExamRequest, db: Session = Depends(get_db)):
     if not questions_data:
         raise HTTPException(status_code=500, detail="Failed to generate questions")
 
-    # Create exam
+    # Create exam record
     exam = Exam(
         id=uuid.uuid4(),
         title=f"{body.subject} — Practice Exam",
@@ -151,12 +140,14 @@ def generate_exam(body: GenerateExamRequest, db: Session = Depends(get_db)):
 
     # Create questions
     for q_data in questions_data:
+        if not isinstance(q_data, dict):
+            continue
         question = ExamQuestion(
             id=uuid.uuid4(),
             exam_id=exam.id,
-            question_text=q_data["question_text"],
-            options=q_data["options"],
-            correct_answer=q_data["correct_answer"],
+            question_text=q_data.get("question_text", ""),
+            options=q_data.get("options", {}),
+            correct_answer=q_data.get("correct_answer", ""),
             explanation=q_data.get("explanation", ""),
             difficulty=q_data.get("difficulty", body.difficulty),
             topic=q_data.get("topic", body.subject),
@@ -178,7 +169,7 @@ def generate_exam(body: GenerateExamRequest, db: Session = Depends(get_db)):
 
 @router.post("/{exam_id}/submit")
 def submit_exam(exam_id: str, body: SubmitExamRequest, db: Session = Depends(get_db)):
-    """Submit exam answers and get results."""
+    """Submit exam answers — Evaluation Agent grades, Learning Coach provides feedback."""
     exam = db.query(Exam).filter(Exam.id == uuid.UUID(exam_id)).first()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
@@ -186,6 +177,7 @@ def submit_exam(exam_id: str, body: SubmitExamRequest, db: Session = Depends(get
     questions = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam.id).all()
     question_map = {str(q.id): q for q in questions}
 
+    # Grade answers
     correct_count = 0
     for answer in body.answers:
         question = question_map.get(answer.question_id)
@@ -196,7 +188,6 @@ def submit_exam(exam_id: str, body: SubmitExamRequest, db: Session = Depends(get
             if is_correct:
                 correct_count += 1
 
-    # Calculate score
     score = round((correct_count / len(questions)) * 100) if questions else 0
 
     exam.status = "completed"
@@ -209,6 +200,21 @@ def submit_exam(exam_id: str, body: SubmitExamRequest, db: Session = Depends(get
     incorrect = [q for q in questions if q.is_correct is False]
     weak_topics = list(set(q.topic for q in incorrect))
 
+    # Use Learning Coach for feedback on errors
+    coaching = None
+    if incorrect and len(incorrect) <= 10:
+        try:
+            coaching = orchestrator.learning_coach.coach_after_exam(
+                weak_topics=weak_topics,
+                incorrect_questions=[
+                    {"question_text": q.question_text, "user_answer": q.user_answer, "correct_answer": q.correct_answer, "topic": q.topic}
+                    for q in incorrect
+                ],
+                score=score,
+            )
+        except Exception:
+            pass  # Coaching is optional, don't fail the request
+
     return {
         "success": True,
         "results": {
@@ -217,5 +223,6 @@ def submit_exam(exam_id: str, body: SubmitExamRequest, db: Session = Depends(get
             "total_questions": len(questions),
             "total_time_seconds": body.total_time_seconds,
             "weak_topics": weak_topics,
+            "coaching": coaching,
         },
     }
