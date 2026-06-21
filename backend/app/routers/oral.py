@@ -5,10 +5,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import OralSession, DocumentChunk
-from app.agents.orchestrator import AgentOrchestrator
+from app.agents import run_oral_start, run_oral_respond
 
 router = APIRouter(prefix="/api/oral", tags=["oral"])
-orchestrator = AgentOrchestrator()
 
 
 class StartSessionRequest(BaseModel):
@@ -36,8 +35,8 @@ def start_session(body: StartSessionRequest, db: Session = Depends(get_db)):
         )
         chunks = [{"content": c.content, "embedding": c.embedding} for c in chunk_records]
 
-    # Multi-agent: RAG Retrieval → Oral Professor
-    result = orchestrator.start_oral_session(
+    # Multi-agent: RAG Retrieval → Oral Professor (CrewAI)
+    result = run_oral_start(
         subject=body.subject,
         difficulty=body.difficulty,
         chunks=chunks,
@@ -87,8 +86,8 @@ def respond_to_session(body: ContinueSessionRequest, db: Session = Depends(get_d
         history.append(msg)
     history.append({"role": "user", "content": body.user_message})
 
-    # Oral Professor Agent responds
-    result = orchestrator.oral_respond(
+    # Oral Professor Agent responds (CrewAI)
+    result = run_oral_respond(
         student_answer=body.user_message,
         subject=session.subject,
         difficulty=session.difficulty,

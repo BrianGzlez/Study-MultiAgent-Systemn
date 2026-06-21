@@ -3,10 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models import Document, Exam, ExamQuestion, OralSession
-from app.agents.orchestrator import AgentOrchestrator
+from app.agents import run_progress_analysis
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
-orchestrator = AgentOrchestrator()
 
 
 @router.get("/dashboard")
@@ -147,6 +146,6 @@ def get_progress(db: Session = Depends(get_db)):
             "weak_topics": weak,
         })
 
-    # Multi-agent pipeline: Progress Agent → Study Planner
-    result = orchestrator.get_progress_analysis(exam_history)
+    # Multi-agent pipeline: Progress Agent → Study Planner (CrewAI)
+    result = run_progress_analysis(exam_history)
     return result

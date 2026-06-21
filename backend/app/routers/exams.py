@@ -5,10 +5,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Document, DocumentChunk, Exam, ExamQuestion
-from app.agents.orchestrator import AgentOrchestrator
+from app.agents import run_exam_generation, run_evaluation_and_coaching
 
 router = APIRouter(prefix="/api/exams", tags=["exams"])
-orchestrator = AgentOrchestrator()
 
 
 class GenerateExamRequest(BaseModel):
@@ -115,8 +114,8 @@ def generate_exam(body: GenerateExamRequest, db: Session = Depends(get_db)):
 
     chunk_dicts = [{"content": c.content, "embedding": c.embedding} for c in chunks]
 
-    # Multi-agent pipeline: RAG → Exam Designer
-    questions_data = orchestrator.generate_exam(
+    # Multi-agent pipeline: RAG → Exam Designer (CrewAI)
+    questions_data = run_exam_generation(
         chunks=chunk_dicts,
         subject=body.subject,
         num_questions=body.num_questions,
@@ -200,20 +199,20 @@ def submit_exam(exam_id: str, body: SubmitExamRequest, db: Session = Depends(get
     incorrect = [q for q in questions if q.is_correct is False]
     weak_topics = list(set(q.topic for q in incorrect))
 
-    # Use Learning Coach for feedback on errors
+    # Use Learning Coach crew for feedback on errors
     coaching = None
     if incorrect and len(incorrect) <= 10:
         try:
-            coaching = orchestrator.learning_coach.coach_after_exam(
-                weak_topics=weak_topics,
-                incorrect_questions=[
-                    {"question_text": q.question_text, "user_answer": q.user_answer, "correct_answer": q.correct_answer, "topic": q.topic}
-                    for q in incorrect
+            coaching = run_evaluation_and_coaching(
+                questions=[
+                    {"id": str(q.id), "question_text": q.question_text, "correct_answer": q.correct_answer, "topic": q.topic, "options": q.options}
+                    for q in questions
                 ],
+                answers={str(a.question_id): a.user_answer for a in body.answers},
                 score=score,
             )
         except Exception:
-            pass  # Coaching is optional, don't fail the request
+            pass  # Coaching is optional
 
     return {
         "success": True,
