@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { apiFetch } from '@/lib/api'
 import { ShellLayout } from '@/components/shell-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -19,6 +20,8 @@ import {
   X,
   Plus,
   Save,
+  Loader2,
+  Check,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -50,15 +53,60 @@ const strictnessLevels = [
   },
 ]
 
-const defaultSubjects = ['Statistics', 'Embedded Systems', 'Macroeconomics', 'Mathematics']
-
 export default function SettingsPage() {
-  const [name, setName] = useState('Your Name')
+  const [name, setName] = useState('Student')
   const [language, setLanguage] = useState('English')
   const [strictness, setStrictness] = useState('normal')
   const [darkMode, setDarkMode] = useState(false)
-  const [subjects, setSubjects] = useState(defaultSubjects)
+  const [subjects, setSubjects] = useState<string[]>([])
   const [newSubject, setNewSubject] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.name) setName(data.name)
+        if (data.language) setLanguage(data.language)
+        if (data.subjects) setSubjects(data.subjects)
+        if (data.strictness) setStrictness(data.strictness)
+        if (data.dark_mode !== undefined) setDarkMode(data.dark_mode)
+      })
+      .catch(console.error)
+  }, [])
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }, [darkMode])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSaved(false)
+    try {
+      await apiFetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          language,
+          subjects,
+          strictness,
+          dark_mode: darkMode,
+        }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (error) {
+      console.error('Failed to save settings:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const addSubject = () => {
     if (newSubject.trim() && !subjects.includes(newSubject.trim())) {
@@ -89,10 +137,7 @@ export default function SettingsPage() {
               </Avatar>
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-semibold text-foreground">{name || 'Your Name'}</p>
-                <p className="text-xs text-muted-foreground">3rd year · Engineering</p>
-                <Button variant="outline" size="sm" className="h-7 text-xs mt-1 w-fit">
-                  Change avatar
-                </Button>
+                <p className="text-xs text-muted-foreground">Student</p>
               </div>
             </div>
             <Separator />
@@ -182,7 +227,7 @@ export default function SettingsPage() {
               <Brain className="size-4 text-study-rose" />
               AI strictness
             </CardTitle>
-            <CardDescription>How demanding should your AI professor be during oral simulations?</CardDescription>
+            <CardDescription>How demanding should your AI professor be?</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {strictnessLevels.map((s) => (
@@ -226,9 +271,23 @@ export default function SettingsPage() {
         </Card>
 
         {/* Save */}
-        <Button className="w-full" size="lg">
-          <Save data-icon="inline-start" />
-          Save changes
+        <Button className="w-full" size="lg" onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <>
+              <Loader2 className="size-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : saved ? (
+            <>
+              <Check className="size-4 mr-2" />
+              Saved!
+            </>
+          ) : (
+            <>
+              <Save className="size-4 mr-2" />
+              Save changes
+            </>
+          )}
         </Button>
       </div>
     </ShellLayout>
