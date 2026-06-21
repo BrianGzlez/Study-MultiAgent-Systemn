@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ClipboardList, Mic2, FileText, BookOpen } from 'lucide-react'
+import { ClipboardList, Mic2, FileText, BookOpen, Clock } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ActivityItem {
   type: string
@@ -9,25 +10,11 @@ interface ActivityItem {
   created_at: string | null
 }
 
-const iconMap: Record<string, typeof ClipboardList> = {
-  exam: ClipboardList,
-  oral: Mic2,
-  upload: FileText,
-  study: BookOpen,
-}
-
-const colorMap: Record<string, string> = {
-  exam: 'text-study-teal',
-  oral: 'text-study-blue',
-  upload: 'text-study-amber',
-  study: 'text-study-rose',
-}
-
-const badgeMap: Record<string, string> = {
-  exam: 'Exam',
-  oral: 'Oral',
-  upload: 'Upload',
-  study: 'Study',
+const config: Record<string, { icon: typeof ClipboardList; color: string; bg: string; badge: string }> = {
+  exam: { icon: ClipboardList, color: 'text-teal-600', bg: 'bg-teal-50', badge: 'Examen' },
+  oral: { icon: Mic2, color: 'text-blue-600', bg: 'bg-blue-50', badge: 'Oral' },
+  upload: { icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50', badge: 'Subido' },
+  study: { icon: BookOpen, color: 'text-rose-600', bg: 'bg-rose-50', badge: 'Estudio' },
 }
 
 function timeAgo(dateStr: string | null): string {
@@ -35,58 +22,66 @@ function timeAgo(dateStr: string | null): string {
   const now = new Date()
   const date = new Date(dateStr)
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)
-
-  if (seconds < 60) return 'Just now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`
+  if (seconds < 60) return 'Ahora'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}min`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d`
   return date.toLocaleDateString()
 }
 
 export function RecentActivity({ items }: { items: ActivityItem[] }) {
   if (items.length === 0) {
     return (
-      <Card>
+      <Card className="border-0 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">Recent activity</CardTitle>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Clock className="size-4 text-muted-foreground" />
+            Actividad reciente
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-6">
-            No activity yet. Upload a document or take an exam to get started.
-          </p>
+          <div className="text-center py-8 text-muted-foreground">
+            <div className="size-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
+              <BookOpen className="size-5 opacity-50" />
+            </div>
+            <p className="text-sm">No hay actividad aún</p>
+            <p className="text-xs mt-1">Sube un documento o toma un examen para empezar</p>
+          </div>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card>
+    <Card className="border-0 shadow-sm">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base font-semibold">Recent activity</CardTitle>
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Clock className="size-4 text-muted-foreground" />
+          Actividad reciente
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-1">
         {items.map((a, i) => {
-          const Icon = iconMap[a.type] || FileText
-          const color = colorMap[a.type] || 'text-muted-foreground'
-          const badge = badgeMap[a.type] || a.type
+          const c = config[a.type] || config.study
+          const Icon = c.icon
 
           return (
             <div
               key={i}
-              className="flex items-start gap-3 py-2.5 border-b border-border last:border-0"
+              className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0 hover:bg-muted/30 rounded-lg px-2 -mx-2 transition-colors"
             >
-              <div className={`mt-0.5 ${color}`}>
-                <Icon className="size-4" />
+              <div className={cn('size-9 rounded-xl flex items-center justify-center shrink-0', c.bg)}>
+                <Icon className={cn('size-4', c.color)} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">{a.label}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{a.detail}</p>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
-                <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
-                  {badge}
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-medium">
+                  {c.badge}
                 </Badge>
-                <span className="text-xs text-muted-foreground">{timeAgo(a.created_at)}</span>
+                <span className="text-[10px] text-muted-foreground">{timeAgo(a.created_at)}</span>
               </div>
             </div>
           )

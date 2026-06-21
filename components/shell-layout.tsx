@@ -15,15 +15,15 @@ export function ShellLayout({ children, title, description, actions }: ShellLayo
     <SidebarProvider>
       <AppSidebar />
       <main className="flex-1 flex flex-col min-h-screen bg-background overflow-hidden">
-        <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <header className="flex items-center justify-between px-6 py-3.5 border-b border-border/50 bg-card/80 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
             <div>
-              <h1 className="text-lg font-bold text-foreground leading-none text-balance">
+              <h1 className="text-base font-bold text-foreground leading-none">
                 {title}
               </h1>
               {description && (
-                <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
               )}
             </div>
           </div>
